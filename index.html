@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>Cesium 統合版（アセット + ピン + Box対応）</title>
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.89/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.89/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+  <style>
+    html, body, #cesiumContainer {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    #menu {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 10px;
+      z-index: 10;
+      border-radius: 8px;
+    }
+    #infoPanel {
+      position: absolute;
+      right: 10px;
+      top: 10px;
+      width: 500px;
+      background: white;
+      padding: 10px;
+      border-radius: 8px;
+      display: none;
+      z-index: 10;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+    #infoPanel iframe, #infoPanel img, #infoPanel embed {
+      width: 100%;
+      height: 280px;
+      border: none;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+  <div id="menu"></div>
+  <div id="infoPanel">
+    <h3 id="infoTitle"></h3>
+    <div id="infoContent"></div>
+  </div>
+
+  <script>
+    Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJhZDE3MjMyZi01MThlLTQxOGQtOTM4ZC1iYjBlODFiMGM2Y2UiLCJpZCI6MjQ1NzQ4LCJpYXQiOjE3Mjc5NzY3ODJ9.pNoxj3_erzKOuSjKyj2A_LQXESK_jk9hg692mvX_3G0';
+
+    const viewer = new Cesium.Viewer('cesiumContainer', {
+      terrainProvider: Cesium.createWorldTerrain()
+    });
+
+    // --- 3D アセット読み込み & チェックボックスメニュー ---
+    const assets = [
+      {
+        id: 3296866,
+        name: "IntegrateModel"
+      },
+      { id: 3308379, name: "Borders" },
+      { id: 3296884, name: "WaterSurface" },
+      { id: 3300958, name: "06KF4701 - Cloud - Cloud" }
+    ];
+
+    const tilesets = {};
+    const menuDiv = document.getElementById('menu');
+
+    assets.forEach(asset => {
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = true;
+      checkbox.id = asset.name;
+
+      label.appendChild(checkbox);
+      label.appendChild(document.createTextNode(" " + asset.name));
+      menuDiv.appendChild(label);
+      menuDiv.appendChild(document.createElement('br'));
+
+      Cesium.IonResource.fromAssetId(asset.id).then(resource => {
+        const tileset = new Cesium.Cesium3DTileset({ url: resource });
+        tilesets[asset.name] = tileset;
+        viewer.scene.primitives.add(tileset);
+
+        checkbox.addEventListener('change', function () {
+          tileset.show = this.checked;
+        });
+
+        if (asset.id === assets[0].id) {
+          viewer.zoomTo(tileset);
+        }
+      }).otherwise(error => {
+        console.error(`Failed to load ${asset.name}`, error);
+      });
+    });
+
+    // --- ピンとBox対応ポップアップ ---
+    const pinBuilder = new Cesium.PinBuilder();
+
+    const pins = [
+      {
+        name: '3D Model(NWD Download)',
+        lat: 35.879167,
+        lon: 136.765833,
+        height: 600,
+        color: Cesium.Color.RED,
+        type: 'iframe',
+        url: 'https://ideacon.ent.box.com/embed/s/xrmcuo3q0zdmh7da0aq2xil2gnmadvz6/file/1875650473789'
+      },
+      {
+        name: 'Photo',
+        lat: 35.879555,
+        lon: 136.76612,
+        height: 610,
+        color: Cesium.Color.YELLOW,
+        type: 'iframe',
+        url: 'https://ideacon.ent.box.com/embed/s/xrmcuo3q0zdmh7da0aq2xil2gnmadvz6/file/1875656104003'
+      },
+      {
+        name: 'PDF',
+        lat: 35.878611,
+        lon: 136.764167,
+        height: 600,
+        color: Cesium.Color.BLUE,
+        type: 'iframe',
+        url: 'https://ideacon.ent.box.com/embed/s/xrmcuo3q0zdmh7da0aq2xil2gnmadvz6/file/1875667507132'
+      },
+      {
+        name: 'VIDEO',
+        lat: 35.881944,
+        lon: 136.765000,
+        height: 605,
+        color: Cesium.Color.GREEN,
+        type: 'youtube',
+        url: 'https://www.youtube.com/embed/ogfzNJJlEHo'
+      }
+    ];
+
+    pins.forEach(pin => {
+      viewer.entities.add({
+        name: pin.name,
+        position: Cesium.Cartesian3.fromDegrees(pin.lon, pin.lat, pin.height),
+        billboard: {
+          image: pinBuilder.fromColor(pin.color, 48).toDataURL(),
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM
+        },
+        description: JSON.stringify({ type: pin.type, url: pin.url })
+      });
+    });
+
+    // --- ピンをクリックしてポップアップ表示 ---
+    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    handler.setInputAction(function (movement) {
+      const pickedObject = viewer.scene.pick(movement.position);
+      if (Cesium.defined(pickedObject) && pickedObject.id && pickedObject.id.description) {
+        let data;
+        try {
+          data = JSON.parse(pickedObject.id.description.getValue());
+        } catch (e) {
+          data = null;
+        }
+
+        document.getElementById('infoTitle').textContent = pickedObject.id.name;
+        const contentDiv = document.getElementById('infoContent');
+
+        if (data && data.type && data.url) {
+          if (data.type === 'iframe' || data.type === 'youtube') {
+            contentDiv.innerHTML = `<iframe src="${data.url}" allowfullscreen></iframe>`;
+          } else {
+            contentDiv.innerHTML = `<p>未対応のコンテンツ形式です</p>`;
+          }
+        } else {
+          contentDiv.innerHTML = `<p>説明がありません</p>`;
+        }
+
+        document.getElementById('infoPanel').style.display = 'block';
+      } else {
+        document.getElementById('infoPanel').style.display = 'none';
+      }
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+  </script>
+</body>
+</html>
