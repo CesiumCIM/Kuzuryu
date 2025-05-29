@@ -2,43 +2,27 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>Cesium 統合版（アセット + ピン + Box + GPS）</title>
+  <title>Cesium 統合版（アセット + ピン + Box + GPS + Cesium地形ON/OFF）</title>
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.89/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.89/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <style>
     html, body, #cesiumContainer {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
+      margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
     }
     #menu {
-      position: absolute;
-      top: 10px;
-      left: 10px;
+      position: absolute; top: 10px; left: 10px;
       background: rgba(255, 255, 255, 0.9);
-      padding: 10px;
-      z-index: 10;
-      border-radius: 8px;
+      padding: 10px; z-index: 10; border-radius: 8px;
     }
     #infoPanel {
-      position: absolute;
-      right: 10px;
-      top: 10px;
-      width: 500px;
-      background: white;
-      padding: 10px;
-      border-radius: 8px;
-      display: none;
-      z-index: 10;
+      position: absolute; right: 10px; top: 10px;
+      width: 500px; background: white;
+      padding: 10px; border-radius: 8px;
+      display: none; z-index: 10;
       box-shadow: 0 2px 10px rgba(0,0,0,0.3);
     }
     #infoPanel iframe, #infoPanel img, #infoPanel embed {
-      width: 100%;
-      height: 280px;
-      border: none;
-      border-radius: 6px;
+      width: 100%; height: 280px; border: none; border-radius: 6px;
     }
   </style>
 </head>
@@ -58,6 +42,51 @@
       shouldAnimate: true
     });
 
+    const menuDiv = document.getElementById('menu');
+
+    // --- Cesium地形ON/OFF用チェックボックス ---
+    const cesiumTerrainLabel = document.createElement('label');
+    const cesiumTerrainCheckbox = document.createElement('input');
+    cesiumTerrainCheckbox.type = 'checkbox';
+    cesiumTerrainCheckbox.checked = true;
+    cesiumTerrainCheckbox.id = 'Cesium地形';
+    cesiumTerrainLabel.appendChild(cesiumTerrainCheckbox);
+    cesiumTerrainLabel.appendChild(document.createTextNode(' Cesium地形'));
+    menuDiv.appendChild(cesiumTerrainLabel);
+    menuDiv.appendChild(document.createElement('br'));
+
+    // 地形・ベースマップ管理
+    const baseTerrain = Cesium.createWorldTerrain();
+    const flatTerrain = new Cesium.EllipsoidTerrainProvider();
+
+    // ベースマップイメージ復元用（例：BingMapsAerial）
+    function restoreBaseLayers() {
+      if (viewer.imageryLayers.length === 0) {
+        viewer.imageryLayers.addImageryProvider(new Cesium.IonImageryProvider({ assetId: 3954 }));
+      }
+    }
+
+    // ベースマップイメージ削除
+    function removeBaseLayers() {
+      viewer.imageryLayers.removeAll();
+    }
+
+    cesiumTerrainCheckbox.addEventListener('change', function() {
+      if (this.checked) {
+        viewer.terrainProvider = baseTerrain;
+        viewer.scene.globe.show = true;
+        restoreBaseLayers();
+        viewer.scene.skyBox.show = true;
+        viewer.scene.skyAtmosphere.show = true;
+      } else {
+        viewer.terrainProvider = flatTerrain;
+        viewer.scene.globe.show = false;
+        removeBaseLayers();
+        viewer.scene.skyBox.show = false;
+        viewer.scene.skyAtmosphere.show = false;
+      }
+    });
+
     // --- 3D アセット読み込み & チェックボックスメニュー ---
     const assets = [
       { id: 3296866, name: "統合地形" },
@@ -67,7 +96,6 @@
     ];
 
     const tilesets = {};
-    const menuDiv = document.getElementById('menu');
 
     assets.forEach(asset => {
       const label = document.createElement('label');
@@ -98,12 +126,12 @@
       });
     });
 
-    // --- ピンとBox対応ポップアップ ---
+    // --- ピンとラベル付きポップアップ ---
     const pinBuilder = new Cesium.PinBuilder();
 
     const pins = [
       {
-        name: '3D Model(NWD Download)',
+        name: '3D Model',
         lat: 35.879167,
         lon: 136.765833,
         height: 600,
@@ -148,10 +176,21 @@
           image: pinBuilder.fromColor(pin.color, 48).toDataURL(),
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM
         },
+        label: {
+          text: pin.name,
+          font: "14px sans-serif",
+          fillColor: Cesium.Color.WHITE,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          verticalOrigin: Cesium.VerticalOrigin.TOP,
+          pixelOffset: new Cesium.Cartesian2(0, -60)
+        },
         description: JSON.stringify({ type: pin.type, url: pin.url })
       });
     });
 
+    // --- ピンをクリックしてポップアップ表示 ---
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
     handler.setInputAction(function (movement) {
       const pickedObject = viewer.scene.pick(movement.position);
@@ -182,7 +221,7 @@
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-    // --- GPSリアルタイム追跡 ---
+    // --- GPS追跡 ---
     if (navigator.geolocation) {
       const terrainProvider = Cesium.createWorldTerrain();
       let gpsEntity = null;
@@ -218,15 +257,16 @@
                 }
               });
 
-              // 初回のみカメラ移動（追跡しない）
-              if (firstUpdate) {
-                viewer.camera.flyTo({
-                  destination: Cesium.Cartesian3.fromDegrees(lon, lat, height + 200)
-                });
-                firstUpdate = false;
-              }
+              viewer.trackedEntity = gpsEntity;
             } else {
               gpsEntity.position = cartesian;
+            }
+
+            if (firstUpdate) {
+              viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(lon, lat, height + 200)
+              });
+              firstUpdate = false;
             }
           });
         },
