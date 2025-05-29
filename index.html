@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>Cesium 統合版（アセット + ピン + Box対応）</title>
+  <title>Cesium 統合版（アセット + ピン + Box + GPS）</title>
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.89/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.89/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <style>
@@ -54,15 +54,13 @@
     Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJhZDE3MjMyZi01MThlLTQxOGQtOTM4ZC1iYjBlODFiMGM2Y2UiLCJpZCI6MjQ1NzQ4LCJpYXQiOjE3Mjc5NzY3ODJ9.pNoxj3_erzKOuSjKyj2A_LQXESK_jk9hg692mvX_3G0';
 
     const viewer = new Cesium.Viewer('cesiumContainer', {
-      terrainProvider: Cesium.createWorldTerrain()
+      terrainProvider: Cesium.createWorldTerrain(),
+      shouldAnimate: true
     });
 
     // --- 3D アセット読み込み & チェックボックスメニュー ---
     const assets = [
-      {
-        id: 3296866,
-        name: "統合地形"
-      },
+      { id: 3296866, name: "統合地形" },
       { id: 3308379, name: "境界線" },
       { id: 3296884, name: "水面" },
       { id: 3300958, name: "点群" }
@@ -154,7 +152,6 @@
       });
     });
 
-    // --- ピンをクリックしてポップアップ表示 ---
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
     handler.setInputAction(function (movement) {
       const pickedObject = viewer.scene.pick(movement.position);
@@ -184,6 +181,68 @@
         document.getElementById('infoPanel').style.display = 'none';
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+    // --- GPSリアルタイム追跡 ---
+    if (navigator.geolocation) {
+      const terrainProvider = Cesium.createWorldTerrain();
+      let gpsEntity = null;
+      let firstUpdate = true;
+
+      navigator.geolocation.watchPosition(
+        function (position) {
+          const lon = position.coords.longitude;
+          const lat = position.coords.latitude;
+          const point = Cesium.Cartographic.fromDegrees(lon, lat);
+
+          Cesium.sampleTerrainMostDetailed(terrainProvider, [point]).then(function (updatedPositions) {
+            const height = updatedPositions[0].height || 0;
+            const cartesian = Cesium.Cartesian3.fromDegrees(lon, lat, height);
+
+            if (!gpsEntity) {
+              gpsEntity = viewer.entities.add({
+                name: "現在地",
+                position: cartesian,
+                point: {
+                  pixelSize: 12,
+                  color: Cesium.Color.BLUE,
+                  outlineColor: Cesium.Color.WHITE,
+                  outlineWidth: 2
+                },
+                label: {
+                  text: "現在地",
+                  font: '16px sans-serif',
+                  style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                  outlineWidth: 2,
+                  verticalOrigin: Cesium.VerticalOrigin.TOP,
+                  pixelOffset: new Cesium.Cartesian2(0, -20)
+                }
+              });
+
+              // 初回のみカメラ移動（追跡しない）
+              if (firstUpdate) {
+                viewer.camera.flyTo({
+                  destination: Cesium.Cartesian3.fromDegrees(lon, lat, height + 200)
+                });
+                firstUpdate = false;
+              }
+            } else {
+              gpsEntity.position = cartesian;
+            }
+          });
+        },
+        function (error) {
+          console.error("GPSエラー:", error);
+          alert("GPSの取得に失敗しました: " + error.message);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 1000,
+          timeout: 5000
+        }
+      );
+    } else {
+      alert("このブラウザはGPSに対応していません");
+    }
   </script>
 </body>
 </html>
