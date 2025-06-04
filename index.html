@@ -103,6 +103,13 @@
 
     const menuDiv = document.getElementById('menu');
 
+    const titleHeading = document.createElement('div');
+titleHeading.textContent = '九頭竜湖 CIM';
+titleHeading.style.fontSize = '16px';
+titleHeading.style.fontWeight = 'bold';
+titleHeading.style.marginBottom = '10px';
+menuDiv.appendChild(titleHeading);
+
         // --- Cesium地形ON/OFF用チェックボックス ---
     const cesiumTerrainLabel = document.createElement('label');
     const cesiumTerrainCheckbox = document.createElement('input');
