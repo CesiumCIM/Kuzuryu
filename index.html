@@ -157,15 +157,16 @@
         ]
       },
       {
-        name: '属性情報(流域 BI)', children: [
-          { name: '貯水池', id: 3421462 },
-          { name: '集水範囲', id: 3421437 },
-          { name: '境界線（仮）', id: 3308379 },
+        name: '流域 BI (仮)', children: [
+          { name: '貯水池 ', id: 3421462 },
+          { name: '集水範囲 ', id: 3421437 },
+          { name: '音達区域', id: 3421437 },
+          { name: '境界線', id: 3308379 },
           { name: '河川境界線等', id: 3308394 }
         ]
       },
   {
-        name: 'その他', children: [
+        name: 'その他属性', children: [
           { name: 'サブボトムプロファイラ・浸食/体積（仮）', id: 3308391 },
           { name: '----', id: 00000 },
           { name: '----', id: 00000 },
@@ -292,14 +293,14 @@
 
     const pins = [
       {
-        name: '3D Model',
+        name: '3D Model（NWD)',
         lat: 35.879167,
         lon: 136.765833,
         height: 600,
         color: Cesium.Color.RED,
         type: 'iframe',
         url: 'https://ideacon.ent.box.com/embed/s/xrmcuo3q0zdmh7da0aq2xil2gnmadvz6/file/1875650473789',
-        note: '2024年 11月 作成 NWD （Navisworks Viewer 用ファイル）'
+        note: '2024年度CIM （Navisworks ダウンロード）'
       },
       {
         name: 'Photo',
@@ -328,7 +329,7 @@
         color: Cesium.Color.GREEN,
         type: 'youtube',
         url: 'https://www.youtube.com/embed/ogfzNJJlEHo',
-        note: '定点観測 Youtubeより （仮）'
+        note: '定点観測YOUTUBE（仮）'
       }
     ];
 
@@ -337,7 +338,7 @@
         name: pin.name,
         position: Cesium.Cartesian3.fromDegrees(pin.lon, pin.lat, pin.height),
         billboard: {
-          image: pinBuilder.fromColor(pin.color, 32).toDataURL(), // サイズ32に修正
+          image: pinBuilder.fromColor(pin.color, 21).toDataURL(), // サイズ32に修正
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM
         },        label: {
           text: pin.name,
@@ -346,7 +347,7 @@
           style: Cesium.LabelStyle.FILL_AND_OUTLINE,
           outlineWidth: 2,
           verticalOrigin: Cesium.VerticalOrigin.TOP,
-          pixelOffset: new Cesium.Cartesian2(0,  -30) // ピンの上に文字
+          pixelOffset: new Cesium.Cartesian2(0, -50) // ピンの上に文字
         },
 
         id: pin.name
