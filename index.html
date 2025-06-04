@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>Cesium 統合版（アセット + ピン + Box + GPS + Cesium地形ON/OFF）</title>
+  <title>Cesium 九頭竜ダム湖 サンプル版 （エクスプローラー + ピンラベル付き）</title>
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.89/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.89/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <style>
@@ -13,6 +13,10 @@
       position: absolute; top: 10px; left: 10px;
       background: rgba(255, 255, 255, 0.9);
       padding: 10px; z-index: 10; border-radius: 8px;
+      max-height: 90%; overflow-y: auto;
+      width: 280px;
+      font-size: 14px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     #infoPanel {
       position: absolute; right: 10px; top: 10px;
@@ -23,6 +27,61 @@
     }
     #infoPanel iframe, #infoPanel img, #infoPanel embed {
       width: 100%; height: 280px; border: none; border-radius: 6px;
+    }
+
+    /* エクスプローラー風ツリーCSS */
+    ul.tree, ul.tree ul {
+      list-style: none;
+      padding-left: 1em;
+      line-height: 1.5em;
+      cursor: default;
+      user-select: none;
+    }
+
+    ul.tree ul {
+      display: none;
+      margin-left: 1em;
+      border-left: 1px solid #ccc;
+      padding-left: 0.8em;
+    }
+
+    input[type="checkbox"].toggle-input {
+      display: none;
+    }
+
+    input[type="checkbox"].toggle-input:checked + label + ul {
+      display: block;
+    }
+
+    label.toggle-label {
+      cursor: pointer;
+      position: relative;
+      padding-left: 1.2em;
+    }
+
+    label.toggle-label::before {
+      content: "▶";
+      position: absolute;
+      left: 0;
+      top: 0;
+      font-size: 0.8em;
+      line-height: 1.5em;
+      transition: transform 0.2s ease-in-out;
+    }
+
+    input[type="checkbox"].toggle-input:checked + label.toggle-label::before {
+      transform: rotate(90deg);
+    }
+
+    /* チェックボックス */
+    .tree-checkbox {
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    /* メニューのラベルを太字に */
+    .tree-label-text {
+      vertical-align: middle;
     }
   </style>
 </head>
@@ -44,7 +103,7 @@
 
     const menuDiv = document.getElementById('menu');
 
-    // --- Cesium地形ON/OFF用チェックボックス ---
+        // --- Cesium地形ON/OFF用チェックボックス ---
     const cesiumTerrainLabel = document.createElement('label');
     const cesiumTerrainCheckbox = document.createElement('input');
     cesiumTerrainCheckbox.type = 'checkbox';
@@ -85,48 +144,150 @@
         viewer.scene.skyBox.show = false;
         viewer.scene.skyAtmosphere.show = false;
       }
-    });
+    })
 
-    // --- 3D アセット読み込み & チェックボックスメニュー ---
-    const assets = [
-      { id: 3296866, name: "統合地形" },
-      { id: 3308379, name: "境界線" },
-      { id: 3296884, name: "水面" },
-      { id: 3300958, name: "点群" }
+    // --- ツリー構造データ（Bの構造を継承） ---
+    const treeData = [
+      { name: '建物 OSD', id: 2602291 },
+      { name: '点群（近赤外線オリジナル_年月日）', id: 3300958 },
+      {
+        name: '地形', children: [
+          { name: '統合地形', id: 3296866 },
+          { name: '地形（例：ALB_年月日）', id: 3308455 }
+        ]
+      },
+      {
+        name: '属性情報(流域 BI)', children: [
+          { name: '貯水池', id: 3421462 },
+          { name: '集水範囲', id: 3421437 },
+          { name: '境界線（仮）', id: 3308379 },
+          { name: '河川境界線等', id: 3308394 }
+        ]
+      },
+  {
+        name: 'その他', children: [
+          { name: 'サブボトムプロファイラ・浸食/体積（仮）', id: 3308391 },
+          { name: '----', id: 00000 },
+          { name: '----', id: 00000 },
+          { name: '----', id: 00000 }
+        ]
+      },
+
+      {
+        name: '水面', children: [
+          { name: '流量（例：平水時）', id: 3303831 },
+          { name: '流量（例：平均年）', id: 3296884 }
+        ]
+      }
     ];
 
     const tilesets = {};
 
-    assets.forEach(asset => {
-      const label = document.createElement('label');
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.checked = true;
-      checkbox.id = asset.name;
+    let uidCounter = 0; // ユニークID生成用
 
-      label.appendChild(checkbox);
-      label.appendChild(document.createTextNode(" " + asset.name));
-      menuDiv.appendChild(label);
-      menuDiv.appendChild(document.createElement('br'));
+    // ツリーUIを再帰で生成
+    function createExplorerTree(container, nodes) {
+      const ul = document.createElement('ul');
+      ul.className = 'tree';
 
-      Cesium.IonResource.fromAssetId(asset.id).then(resource => {
-        const tileset = new Cesium.Cesium3DTileset({ url: resource });
-        tilesets[asset.name] = tileset;
-        viewer.scene.primitives.add(tileset);
+      nodes.forEach(node => {
+        const li = document.createElement('li');
 
-        checkbox.addEventListener('change', function () {
-          tileset.show = this.checked;
-        });
+        if (node.children && node.children.length > 0) {
+          // 親ノード：折りたたみチェックボックス＋label＋子ノードUL
 
-        if (asset.id === assets[0].id) {
-          viewer.zoomTo(tileset);
+          const toggleId = 'toggle-' + (uidCounter++);
+          const toggleCheckbox = document.createElement('input');
+          toggleCheckbox.type = 'checkbox';
+          toggleCheckbox.className = 'toggle-input';
+          toggleCheckbox.id = toggleId;
+          toggleCheckbox.checked = true; // 初期展開
+
+          const toggleLabel = document.createElement('label');
+          toggleLabel.htmlFor = toggleId;
+          toggleLabel.className = 'toggle-label';
+
+          const treeCheckbox = document.createElement('input');
+          treeCheckbox.type = 'checkbox';
+          treeCheckbox.className = 'tree-checkbox';
+          treeCheckbox.checked = true;
+
+          const textSpan = document.createElement('span');
+          textSpan.className = 'tree-label-text';
+          textSpan.textContent = node.name;
+
+          toggleLabel.appendChild(treeCheckbox);
+          toggleLabel.appendChild(textSpan);
+
+          li.appendChild(toggleCheckbox);
+          li.appendChild(toggleLabel);
+
+          // 再帰で子ノード生成
+          const childUl = createExplorerTree(li, node.children);
+          li.appendChild(childUl);
+
+          // チェックボックスの挙動：親のチェックを変えたら子にも伝播
+          treeCheckbox.addEventListener('change', () => {
+            const checked = treeCheckbox.checked;
+            // 子のチェックボックスを全部変更
+            const inputs = li.querySelectorAll('input.tree-checkbox');
+            inputs.forEach(input => { input.checked = checked; });
+            // Cesiumの表示も切り替え
+            node.children.forEach(child => {
+              if (child.id && tilesets[child.name]) {
+                tilesets[child.name].show = checked;
+              }
+            });
+          });
+
+        } else {
+          // 末端ノード：チェックボックス＋名前だけ
+
+          const treeCheckbox = document.createElement('input');
+          treeCheckbox.type = 'checkbox';
+          treeCheckbox.className = 'tree-checkbox';
+          treeCheckbox.checked = true;
+
+          const textSpan = document.createElement('span');
+          textSpan.className = 'tree-label-text';
+          textSpan.textContent = node.name;
+
+          li.appendChild(treeCheckbox);
+          li.appendChild(textSpan);
+
+          // チェックイベント
+          treeCheckbox.addEventListener('change', () => {
+            if (node.id && tilesets[node.name]) {
+              tilesets[node.name].show = treeCheckbox.checked;
+            }
+          });
         }
-      }).otherwise(error => {
-        console.error(`Failed to load ${asset.name}`, error);
-      });
-    });
 
-    // --- ピンとラベル付きポップアップ ---
+        ul.appendChild(li);
+
+        // アセット読み込み
+        if (node.id) {
+          Cesium.IonResource.fromAssetId(node.id).then(resource => {
+            const tileset = new Cesium.Cesium3DTileset({ url: resource });
+            tilesets[node.name] = tileset;
+            viewer.scene.primitives.add(tileset);
+            if (node.name === '統合地形') viewer.zoomTo(tileset);
+            // 最初は表示ON
+            tileset.show = true;
+          }).otherwise(error => {
+            console.error(`Asset ID ${node.id} の読み込みに失敗:`, error);
+          });
+        }
+      });
+
+      container.appendChild(ul);
+      return ul;
+    }
+
+    createExplorerTree(menuDiv, treeData);
+
+    // --- ピン関連修正 ---
+
     const pinBuilder = new Cesium.PinBuilder();
 
     const pins = [
@@ -146,7 +307,8 @@
         height: 610,
         color: Cesium.Color.YELLOW,
         type: 'iframe',
-        url: 'https://ideacon.ent.box.com/embed/s/xrmcuo3q0zdmh7da0aq2xil2gnmadvz6/file/1875656104003'
+        url: 'https://ideacon.ent.box.com/embed/s/xrmcuo3q0zdmh7da0aq2xil2gnmadvz6/file/1875656104003',
+        note: '2022年　10月　○○○○にて撮影'
       },
       {
         name: 'PDF',
@@ -173,116 +335,145 @@
         name: pin.name,
         position: Cesium.Cartesian3.fromDegrees(pin.lon, pin.lat, pin.height),
         billboard: {
-          image: pinBuilder.fromColor(pin.color, 48).toDataURL(),
+          image: pinBuilder.fromColor(pin.color, 32).toDataURL(), // サイズ32に修正
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM
-        },
-        label: {
+        },        label: {
           text: pin.name,
-          font: "14px sans-serif",
-          fillColor: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
+          font: '14px sans-serif',
+          fillColor: pin.color,
           style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          outlineWidth: 2,
           verticalOrigin: Cesium.VerticalOrigin.TOP,
-          pixelOffset: new Cesium.Cartesian2(0, -60)
+          pixelOffset: new Cesium.Cartesian2(0,  -30) // ピンの上に文字
         },
-        description: JSON.stringify({ type: pin.type, url: pin.url })
+
+        id: pin.name
       });
     });
 
-    // --- ピンをクリックしてポップアップ表示 ---
+    // クリックで吹き出し表示はAのまま
+
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-    handler.setInputAction(function (movement) {
-      const pickedObject = viewer.scene.pick(movement.position);
-      if (Cesium.defined(pickedObject) && pickedObject.id && pickedObject.id.description) {
-        let data;
-        try {
-          data = JSON.parse(pickedObject.id.description.getValue());
-        } catch (e) {
-          data = null;
+    handler.setInputAction(function(click) {
+      const pickedObject = viewer.scene.pick(click.position);
+      if (Cesium.defined(pickedObject) && pickedObject.id) {
+        const entity = pickedObject.id;
+        const pin = pins.find(p => p.name === entity.id);
+        if (pin) {
+          showInfoPanel(pin);
         }
-
-        document.getElementById('infoTitle').textContent = pickedObject.id.name;
-        const contentDiv = document.getElementById('infoContent');
-
-        if (data && data.type && data.url) {
-          if (data.type === 'iframe' || data.type === 'youtube') {
-            contentDiv.innerHTML = `<iframe src="${data.url}" allowfullscreen></iframe>`;
-          } else {
-            contentDiv.innerHTML = `<p>未対応のコンテンツ形式です</p>`;
-          }
-        } else {
-          contentDiv.innerHTML = `<p>説明がありません</p>`;
-        }
-
-        document.getElementById('infoPanel').style.display = 'block';
       } else {
-        document.getElementById('infoPanel').style.display = 'none';
+        hideInfoPanel();
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-    // --- GPS追跡 ---
-    if (navigator.geolocation) {
-      const terrainProvider = Cesium.createWorldTerrain();
-      let gpsEntity = null;
-      let firstUpdate = true;
+    function showInfoPanel(pin) {
+      const panel = document.getElementById('infoPanel');
+      const title = document.getElementById('infoTitle');
+      const content = document.getElementById('infoContent');
+      title.textContent = pin.name;
+      content.innerHTML = '';
 
-      navigator.geolocation.watchPosition(
-        function (position) {
-          const lon = position.coords.longitude;
-          const lat = position.coords.latitude;
-          const point = Cesium.Cartographic.fromDegrees(lon, lat);
+  // --- noteがある場合は注釈表示（小さくグレーで）
+  if (pin.note) {
+    const noteDiv = document.createElement('div');
+    noteDiv.textContent = pin.note;
+    noteDiv.style.fontSize = '12px';
+    noteDiv.style.color = 'gray';
+    noteDiv.style.marginBottom = '8px';
+    content.appendChild(noteDiv);
+  }
 
-          Cesium.sampleTerrainMostDetailed(terrainProvider, [point]).then(function (updatedPositions) {
-            const height = updatedPositions[0].height || 0;
-            const cartesian = Cesium.Cartesian3.fromDegrees(lon, lat, height);
+      if (pin.type === 'iframe') {
+        const iframe = document.createElement('iframe');
+        iframe.src = pin.url;
+        content.appendChild(iframe);
+      } else if (pin.type === 'youtube') {
+        const iframe = document.createElement('iframe');
+        iframe.src = pin.url;
+        content.appendChild(iframe);
+      } else if (pin.type === 'image') {
+        const img = document.createElement('img');
+        img.src = pin.url;
+        content.appendChild(img);
+      } else if (pin.type === 'pdf') {
+        const embed = document.createElement('embed');
+        embed.src = pin.url;
+        embed.type = 'application/pdf';
+        content.appendChild(embed);
+      }
 
-            if (!gpsEntity) {
-              gpsEntity = viewer.entities.add({
-                name: "現在地",
-                position: cartesian,
-                point: {
-                  pixelSize: 12,
-                  color: Cesium.Color.BLUE,
-                  outlineColor: Cesium.Color.WHITE,
-                  outlineWidth: 2
-                },
-                label: {
-                  text: "現在地",
-                  font: '16px sans-serif',
-                  style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                  outlineWidth: 2,
-                  verticalOrigin: Cesium.VerticalOrigin.TOP,
-                  pixelOffset: new Cesium.Cartesian2(0, -20)
-                }
-              });
-
-              viewer.trackedEntity = gpsEntity;
-            } else {
-              gpsEntity.position = cartesian;
-            }
-
-            if (firstUpdate) {
-              viewer.camera.flyTo({
-                destination: Cesium.Cartesian3.fromDegrees(lon, lat, height + 200)
-              });
-              firstUpdate = false;
-            }
-          });
-        },
-        function (error) {
-          console.error("GPSエラー:", error);
-          alert("GPSの取得に失敗しました: " + error.message);
-        },
-        {
-          enableHighAccuracy: true,
-          maximumAge: 1000,
-          timeout: 5000
-        }
-      );
-    } else {
-      alert("このブラウザはGPSに対応していません");
+      panel.style.display = 'block';
     }
+
+    function hideInfoPanel() {
+      document.getElementById('infoPanel').style.display = 'none';
+    }
+
+    // --- GPS追跡機能 追加 ---
+  if (navigator.geolocation) {
+    const terrainProvider = Cesium.createWorldTerrain();
+    let gpsEntity = null;
+    let firstUpdate = true;
+
+    navigator.geolocation.watchPosition(
+      function (position) {
+        const lon = position.coords.longitude;
+        const lat = position.coords.latitude;
+        const point = Cesium.Cartographic.fromDegrees(lon, lat);
+
+        Cesium.sampleTerrainMostDetailed(terrainProvider, [point]).then(function (updatedPositions) {
+          const height = updatedPositions[0].height || 0;
+          const cartesian = Cesium.Cartesian3.fromDegrees(lon, lat, height);
+
+          if (!gpsEntity) {
+            gpsEntity = viewer.entities.add({
+              name: "現在地",
+              position: cartesian,
+              point: {
+                pixelSize: 12,
+                color: Cesium.Color.BLUE,
+                outlineColor: Cesium.Color.WHITE,
+                outlineWidth: 2
+              },
+              label: {
+                text: "現在地",
+                font: '16px sans-serif',
+                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                outlineWidth: 2,
+                verticalOrigin: Cesium.VerticalOrigin.TOP,
+                pixelOffset: new Cesium.Cartesian2(0, -20)
+              }
+            });
+
+            viewer.trackedEntity = gpsEntity;
+          } else {
+            gpsEntity.position = cartesian;
+          }
+
+          if (firstUpdate) {
+            viewer.camera.flyTo({
+              destination: Cesium.Cartesian3.fromDegrees(lon, lat, height + 200)
+            });
+            firstUpdate = false;
+          }
+        });
+      },
+      function (error) {
+        console.error("GPSエラー:", error);
+        alert("GPSの取得に失敗しました: " + error.message);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 5000
+      }
+    );
+  } else {
+    alert("このブラウザはGPSに対応していません");
+  }
+
+
   </script>
 </body>
 </html>
